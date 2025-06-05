@@ -78,10 +78,18 @@ class Model(object):
             key = self.hash(s)
             if key not in self.table:
                 continue
-
-            black, draw, white = self.table[key]
-            p = (black - white) / sum(self.table[key]) * turn
-            results.append((where, p))
+            
+            # 获取该状态的胜负统计
+            stats = self.table[key]
+            if len(stats) == 3:  # 如果是 [黑胜,平局,白胜] 格式
+                black, draw, white = stats
+                wins = black if turn == BLACK else white
+                total = sum(stats)
+                confidence = wins / total if total > 0 else 0
+            else:  # 如果是旧格式或其他格式，使用一个默认置信度
+                confidence = 0.5
+            
+            results.append((where, confidence))
 
         if not results:
             return self.exploration(state)

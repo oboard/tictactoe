@@ -123,6 +123,9 @@ class ContextMenu(QtWidgets.QMenu):
     undo_signal = QtCore.Signal(None)
     train_signal = QtCore.Signal(None)
     save_signal = QtCore.Signal(None)
+    model_sarsa_signal = QtCore.Signal(None)
+    model_qlearning_signal = QtCore.Signal(None)
+    model_mcts_signal = QtCore.Signal(None)
 
     MENUS = [
         ('Restart', 'Ctrl+N', lambda self: self.reset_signal.emit()),
@@ -132,6 +135,10 @@ class ContextMenu(QtWidgets.QMenu):
         ('separator', None, None),
         ('Train', 'Ctrl+T', lambda self: self.train_signal.emit()),
         ('Save', 'Ctrl+S', lambda self: self.save_signal.emit()),
+        ('separator', None, None),
+        ('SARSA', 'Ctrl+1', lambda self: self.model_sarsa_signal.emit()),
+        ('Q-Learning', 'Ctrl+2', lambda self: self.model_qlearning_signal.emit()),
+        ('MCTS', 'Ctrl+3', lambda self: self.model_mcts_signal.emit()),
     ]
 
     def __init__(self, parent=None):
@@ -158,15 +165,46 @@ class TrainingWindow(QtWidgets.QDialog):
         self.setWindowTitle("训练状态")
         self.resize(800, 400)  # 调整窗口大小以容纳棋盘
         
-        # 使用水平布局
-        layout = QtWidgets.QHBoxLayout()
-        self.setLayout(layout)
+        # 使用垂直布局作为主布局
+        main_layout = QtWidgets.QVBoxLayout()
+        self.setLayout(main_layout)
+        
+        # 添加模型选择工具栏
+        toolbar = QtWidgets.QToolBar()
+        main_layout.addWidget(toolbar)
+        
+        # 添加模型选择单选框组
+        model_group = QtWidgets.QButtonGroup(self)
+        
+        sarsa_btn = QtWidgets.QRadioButton("SARSA")
+        sarsa_btn.setChecked(True)  # 默认选中
+        model_group.addButton(sarsa_btn)
+        toolbar.addWidget(sarsa_btn)
+        
+        qlearning_btn = QtWidgets.QRadioButton("Q-Learning")
+        model_group.addButton(qlearning_btn)
+        toolbar.addWidget(qlearning_btn)
+        
+        mcts_btn = QtWidgets.QRadioButton("MCTS")
+        model_group.addButton(mcts_btn)
+        toolbar.addWidget(mcts_btn)
+        
+        # 添加工具栏分隔符
+        toolbar.addSeparator()
+        
+        # 添加训练按钮
+        train_btn = QtWidgets.QPushButton("开始训练")
+        toolbar.addWidget(train_btn)
+        
+        # 使用水平布局放置主要内容
+        content_layout = QtWidgets.QHBoxLayout()
+        main_layout.addLayout(content_layout)
         
         # 左侧信息区域
         left_widget = QtWidgets.QWidget()
         left_layout = QtWidgets.QVBoxLayout()
         left_widget.setLayout(left_layout)
-        layout.addWidget(left_widget)
+        content_layout.addWidget(left_widget)
         
         # Q表信息
         self.q_info = QtWidgets.QTextEdit()
@@ -185,8 +223,33 @@ class TrainingWindow(QtWidgets.QDialog):
         
         # 右侧棋盘
         self.board = Board(self)
-        self.board.setFixedSize(400, 400)  # 固定棋盘大小
-        layout.addWidget(self.board)
+        self.board.piece_size = 30  # 调整棋子大小
+        self.board.setFixedSize(400, 400)  # 调整棋盘大小为 80*3=240
+        content_layout.addWidget(self.board)
+        
+        # 连接按钮信号
+        self.model_buttons = {
+            'sarsa': sarsa_btn,
+            'qlearning': qlearning_btn,
+            'mcts': mcts_btn
+        }
+
+        def switch_model(button):
+            model_map = {
+                sarsa_btn: 'sarsa',
+                qlearning_btn: 'qlearning',
+                mcts_btn: 'mcts'
+            }
+            if button.isChecked():
+                model_type = model_map[button]
+                self.parent().switch_model(model_type)
+                # 取消其他按钮的选中状态
+                for btn in model_map.keys():
+                    if btn != button:
+                        btn.setChecked(False)
+                
+        model_group.buttonClicked.connect(switch_model)
+        train_btn.clicked.connect(self.parent().train)
 
     def update_info(self, q_table, epsilon, step, total):
         # 更新Q表信息
@@ -259,19 +322,41 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self.showContextMenu)
 
+        # 连接所有信号
         self.contextMenu.reset_signal.connect(self.restart)
         self.contextMenu.hint_signal.connect(self.hint)
         self.contextMenu.switch_signal.connect(self.switch)
         self.contextMenu.undo_signal.connect(self.undo)
         self.contextMenu.train_signal.connect(self.train)
         self.contextMenu.save_signal.connect(self.save)
+        
+        # 添加模型切换信号连接
+        self.contextMenu.model_sarsa_signal.connect(lambda: self.switch_model('sarsa'))
+        self.contextMenu.model_qlearning_signal.connect(lambda: self.switch_model('qlearning'))
+        self.contextMenu.model_mcts_signal.connect(lambda: self.switch_model('mcts'))
 
+        self.current_model = 'sarsa'  # 默认使用SARSA
         self.game = Game(WHITE)
 
         self.restart()
-
         self.training_window = TrainingWindow(self)
         
+    def switch_model(self, model_type):
+        """切换AI模型"""
+        if model_type == self.current_model:
+            return
+            
+        self.current_model = model_type
+            
+        self.game.switch_model(model_type)
+        
+        # 更新训练窗口中的单选框状态
+        if hasattr(self, 'training_window'):
+            self.training_window.model_buttons[model_type].setChecked(True)
+        
+        # 更新状态栏
+        self.statusBar().showMessage(f"已切换到 {model_type.upper()} 模型")
+
     def showContextMenu(self, point):
         self.contextMenu.exec(self.mapToGlobal(point))
 
@@ -365,6 +450,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.progressBar.setValue(self.game.model.count)
         self.progressBar.setVisible(False)
+        
+        # 根据当前模型类型保存到对应文件
+        model_files = {
+            'sarsa': 'model_sarsa.pkl',
+            'qlearning': 'model_qlearning.pkl',
+            'mcts': 'model_mcts.pkl'
+        }
+        self.game.model.filename = model_files[self.current_model]  # 设置保存文件名
         self.save()
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:

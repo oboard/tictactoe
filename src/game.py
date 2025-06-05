@@ -1,24 +1,40 @@
 import re
 import numpy as np
-# from model_mcts import BLACK, EMPTY, WHITE, Model
-from model_sarsa import BLACK, EMPTY, WHITE, Model
-# from model_qlearning import BLACK, WHITE, EMPTY, Model
+from model_sarsa import BLACK, EMPTY, WHITE
 
 class Game(object):
     def __init__(self, ai=WHITE) -> None:
         self.state = np.zeros((3, 3), dtype=np.int8)   # 初始状态，全是 0
         self.turn = BLACK                                    # 黑棋先手
+        self.model = None
+        self.model_type = 'sarsa'  # 默认使用SARSA模型
+        self.ai = ai  # 设置 AI 使用的棋子颜色
+        
+        # 初始化并加载模型
+        self.switch_model(self.model_type)
+        
+    def switch_model(self, model_type):
+        """切换AI模型"""
+        self.model_type = model_type
+        print(f"正在使用模型: {model_type}")
+        # 根据选择创建新的模型实例
+        if model_type == 'sarsa':
+            from model_sarsa import Model
+        elif model_type == 'qlearning':
+            from model_qlearning import Model
+        elif model_type == 'mcts':
+            from model_mcts import Model
+            
+        print(f"正在加载模型: {model_type}")
         self.model = Model()
         
         # 尝试加载已训练的模型
         try:
-            self.model.load('model_sarsa.pkl')  # 加载已保存的模型
-            print("成功加载训练模型: model_sarsa.pkl")
+            self.Q = self.model.load()  # 加载已保存的模型
+            print(f"成功加载训练模型: {self.model.filename}")
         except Exception as e:
             print(f"加载模型失败: {e}")
             print("将使用未训练的新模型")
-            
-        self.ai = ai
         self.last = None
         self.stack = []
 
