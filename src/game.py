@@ -7,7 +7,7 @@ class Game(object):
         self.state = np.zeros((3, 3), dtype=np.int8)   # 初始状态，全是 0
         self.turn = BLACK                                    # 黑棋先手
         self.model = None
-        self.model_type = 'sarsa'  # 默认使用SARSA模型
+        self.model_type = 'default'  # 默认使用SARSA模型
         self.ai = ai  # 设置 AI 使用的棋子颜色
         
         # 初始化并加载模型

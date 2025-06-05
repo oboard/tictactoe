@@ -19,7 +19,7 @@ class Model(object):
     def __init__(self, epsilon=0.7, count=10000) -> None:
         self.epsilon = epsilon
         self.count = count
-        self.filename = os.path.join(dirname, "model.pkl")
+        self.filename = os.path.join(dirname, "model_default.pkl")
         self.table: dict[tuple, np.ndarray] = self.load()
         logger.info("load model state count %s", self.table.__len__())
 

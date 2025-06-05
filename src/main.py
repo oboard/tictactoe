@@ -198,6 +198,22 @@ class TrainingWindow(QtWidgets.QDialog):
         # 添加工具栏分隔符
         toolbar.addSeparator()
         
+        # 添加训练轮数设置
+        epoch_layout = QtWidgets.QHBoxLayout()
+        epoch_label = QtWidgets.QLabel("训练轮数:")
+        self.epoch_spinbox = QtWidgets.QSpinBox()
+        self.epoch_spinbox.setRange(1000, 100000)  # 设置训练轮数范围
+        self.epoch_spinbox.setSingleStep(1000)     # 每次调整增减1000轮
+        self.epoch_spinbox.setValue(30000)         # 默认30000轮
+        epoch_layout.addWidget(epoch_label)
+        epoch_layout.addWidget(self.epoch_spinbox)
+        epoch_widget = QtWidgets.QWidget()
+        epoch_widget.setLayout(epoch_layout)
+        toolbar.addWidget(epoch_widget)
+        
+        # 添加工具栏分隔符
+        toolbar.addSeparator()
+        
         # 添加训练按钮
         train_btn = QtWidgets.QPushButton("开始训练")
         toolbar.addWidget(train_btn)
@@ -257,7 +273,14 @@ class TrainingWindow(QtWidgets.QDialog):
                         btn.setChecked(False)
                 
         model_group.buttonClicked.connect(switch_model)
-        train_btn.clicked.connect(self.parent().train)
+        train_btn.clicked.connect(self.start_training)
+        
+    def start_training(self):
+        # 设置新的训练轮数
+        epochs = self.epoch_spinbox.value()
+        self.parent().game.model.count = epochs
+        # 开始训练
+        self.parent().train()
 
     def update_info(self, q_table, epsilon, step, total):
         # 更新Q表信息
@@ -349,12 +372,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.contextMenu.save_signal.connect(self.save)
         
         # 添加模型切换信号连接
+        self.contextMenu.model_default_signal.connect(lambda: self.switch_model('default'))
         self.contextMenu.model_sarsa_signal.connect(lambda: self.switch_model('sarsa'))
         self.contextMenu.model_qlearning_signal.connect(lambda: self.switch_model('qlearning'))
         self.contextMenu.model_mcts_signal.connect(lambda: self.switch_model('mcts'))
-        self.contextMenu.model_default_signal.connect(lambda: self.switch_model('default'))
 
-        self.current_model = 'sarsa'  # 默认使用SARSA
+        self.current_model = 'default'
         self.game = Game(WHITE)
 
         self.restart()
@@ -458,7 +481,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def train(self):
         self.training_window.show()
         self.progressBar.setVisible(True)
-        self.progressBar.setRange(0, self.game.model.count)
+        self.progressBar.setRange(0, self.game.model.count)  # 使用更新后的训练轮数
 
         # 修改model的训练函数，使其能够回调更新信息
         def update_callback(step, q_table, epsilon):
