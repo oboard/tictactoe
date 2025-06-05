@@ -126,6 +126,7 @@ class ContextMenu(QtWidgets.QMenu):
     model_sarsa_signal = QtCore.Signal(None)
     model_qlearning_signal = QtCore.Signal(None)
     model_mcts_signal = QtCore.Signal(None)
+    model_default_signal = QtCore.Signal(None)
 
     MENUS = [
         ('Restart', 'Ctrl+N', lambda self: self.reset_signal.emit()),
@@ -139,6 +140,7 @@ class ContextMenu(QtWidgets.QMenu):
         ('SARSA', 'Ctrl+1', lambda self: self.model_sarsa_signal.emit()),
         ('Q-Learning', 'Ctrl+2', lambda self: self.model_qlearning_signal.emit()),
         ('MCTS', 'Ctrl+3', lambda self: self.model_mcts_signal.emit()),
+        ('Default', 'Ctrl+4', lambda self: self.model_default_signal.emit()),
     ]
 
     def __init__(self, parent=None):
@@ -189,6 +191,10 @@ class TrainingWindow(QtWidgets.QDialog):
         model_group.addButton(mcts_btn)
         toolbar.addWidget(mcts_btn)
         
+        default_btn = QtWidgets.QRadioButton("Default")
+        model_group.addButton(default_btn)
+        toolbar.addWidget(default_btn)
+        
         # 添加工具栏分隔符
         toolbar.addSeparator()
         
@@ -231,14 +237,16 @@ class TrainingWindow(QtWidgets.QDialog):
         self.model_buttons = {
             'sarsa': sarsa_btn,
             'qlearning': qlearning_btn,
-            'mcts': mcts_btn
+            'mcts': mcts_btn,
+            'default': default_btn
         }
 
         def switch_model(button):
             model_map = {
                 sarsa_btn: 'sarsa',
                 qlearning_btn: 'qlearning',
-                mcts_btn: 'mcts'
+                mcts_btn: 'mcts',
+                default_btn: 'default'
             }
             if button.isChecked():
                 model_type = model_map[button]
@@ -283,12 +291,22 @@ class TrainingWindow(QtWidgets.QDialog):
                 # 更新棋盘显示
                 self.board.refresh(board, None)
                 
-                # 显示Q值信息
-                q_info_text += "\n各位置的Q值:\n"
-                q_values = q_table[sample_state]
-                q_board = q_values.reshape(3, 3)
-                for row in q_board:
-                    q_info_text += " ".join(f"{x:6.3f}" for x in row) + "\n"
+                # 显示Q值/概率信息
+                q_info_text += "\n各位置的值:\n"
+                values = q_table[sample_state]
+                
+                # 根据值的不同格式进行显示
+                if isinstance(values, np.ndarray):
+                    if values.size == 3:  # Default模型 [黑胜,平,白胜]
+                        q_info_text += f"黑胜概率: {values[0]:.3f}\n"
+                        q_info_text += f"平局概率: {values[1]:.3f}\n"
+                        q_info_text += f"白胜概率: {values[2]:.3f}\n"
+                    else:  # SARSA/Q-Learning模型 9个Q值
+                        values_board = values.reshape(3, 3)
+                        for row in values_board:
+                            q_info_text += " ".join(f"{x:6.3f}" for x in row) + "\n"
+                else:
+                    q_info_text += str(values) + "\n"
             
         self.q_info.setText(q_info_text)
         
@@ -334,6 +352,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.contextMenu.model_sarsa_signal.connect(lambda: self.switch_model('sarsa'))
         self.contextMenu.model_qlearning_signal.connect(lambda: self.switch_model('qlearning'))
         self.contextMenu.model_mcts_signal.connect(lambda: self.switch_model('mcts'))
+        self.contextMenu.model_default_signal.connect(lambda: self.switch_model('default'))
 
         self.current_model = 'sarsa'  # 默认使用SARSA
         self.game = Game(WHITE)
@@ -455,7 +474,8 @@ class MainWindow(QtWidgets.QMainWindow):
         model_files = {
             'sarsa': 'model_sarsa.pkl',
             'qlearning': 'model_qlearning.pkl',
-            'mcts': 'model_mcts.pkl'
+            'mcts': 'model_mcts.pkl',
+            'default': 'model.pkl'  # default模型使用model.pkl作为文件名
         }
         self.game.model.filename = model_files[self.current_model]  # 设置保存文件名
         self.save()

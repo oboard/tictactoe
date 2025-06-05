@@ -24,6 +24,8 @@ class Game(object):
             from model_qlearning import Model
         elif model_type == 'mcts':
             from model_mcts import Model
+        elif model_type == 'default':
+            from model_default import Model
             
         print(f"正在加载模型: {model_type}")
         self.model = Model()

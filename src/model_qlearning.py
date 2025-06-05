@@ -12,7 +12,7 @@ BLACK = 1
 WHITE = -1
 
 class Model(object):
-    def __init__(self, epsilon=0.6, alpha=0.5, gamma=0.9, count=50000):
+    def __init__(self, epsilon=0.6, alpha=0.5, gamma=0.9, count=30000):
         self.epsilon = epsilon        # 探索率
         self.alpha = alpha            # 学习率
         self.gamma = gamma            # 折扣因子
