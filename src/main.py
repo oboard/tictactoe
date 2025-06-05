@@ -498,7 +498,7 @@ class MainWindow(QtWidgets.QMainWindow):
             'sarsa': 'model_sarsa.pkl',
             'qlearning': 'model_qlearning.pkl',
             'mcts': 'model_mcts.pkl',
-            'default': 'model.pkl'  # default模型使用model.pkl作为文件名
+            'default': 'model_default.pkl'
         }
         self.game.model.filename = model_files[self.current_model]  # 设置保存文件名
         self.save()
