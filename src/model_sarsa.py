@@ -13,12 +13,15 @@ WHITE = -1
 
 class Model(object):
     def __init__(self, epsilon=0.6, alpha=0.5, gamma=0.9, count=30000):
-        self.epsilon = epsilon        # 探索率
-        self.alpha = alpha            # 学习率
-        self.gamma = gamma            # 折扣因子
-        self.count = count            # 训练回合数
+        self.initial_epsilon = epsilon  # 初始探索率
+        self.epsilon = epsilon          # 当前探索率
+        self.epsilon_decay = 0.9995     # 探索率衰减系数
+        self.epsilon_min = 0.01         # 最小探索率
+        self.alpha = alpha              # 学习率
+        self.gamma = gamma              # 折扣因子
+        self.count = count              # 训练回合数
         self.filename = os.path.join(dirname, "model_sarsa.pkl")
-        self.Q = self.load()          # Q表：key=状态, value=动作Q值数组
+        self.Q = self.load()            # Q表：key=状态, value=动作Q值数组
         logger.info("load SARSA state count %s", len(self.Q))
 
     def save(self):
@@ -46,11 +49,63 @@ class Model(object):
             return np.array([0, 1, 0])    # 平局
         return None
 
+    def get_state_symmetries(self, state: np.ndarray):
+        """获取状态的所有对称形式"""
+        symmetries = []
+        # 原始状态
+        symmetries.append(state)
+        # 旋转90度
+        symmetries.append(np.rot90(state))
+        # 旋转180度
+        symmetries.append(np.rot90(state, 2))
+        # 旋转270度
+        symmetries.append(np.rot90(state, 3))
+        # 水平翻转
+        symmetries.append(np.fliplr(state))
+        # 垂直翻转
+        symmetries.append(np.flipud(state))
+        # 对角线翻转
+        symmetries.append(np.transpose(state))
+        # 反对角线翻转
+        symmetries.append(np.fliplr(np.transpose(state)))
+        return symmetries
+
     def hash(self, state: np.ndarray):
-        return tuple(state.reshape(9))
+        """优化的状态哈希函数"""
+        # 获取所有对称状态
+        symmetries = self.get_state_symmetries(state)
+        # 选择字典序最小的状态作为规范形式
+        canonical_state = min(tuple(s.reshape(9)) for s in symmetries)
+        return canonical_state
 
     def available_moves(self, state):
         return [tuple(x) for x in np.argwhere(state == EMPTY)]
+
+    def get_reward_shaping(self, state: np.ndarray, turn: int) -> float:
+        """奖励塑形：根据当前状态给予中间奖励"""
+        reward = 0.0
+        
+        # 检查行、列和对角线
+        for i in range(3):
+            # 检查行
+            row_sum = np.sum(state[i, :])
+            if abs(row_sum) == 2:
+                reward += 0.1 * np.sign(row_sum) * turn
+            # 检查列
+            col_sum = np.sum(state[:, i])
+            if abs(col_sum) == 2:
+                reward += 0.1 * np.sign(col_sum) * turn
+                
+        # 检查对角线
+        diag_sum = np.trace(state)
+        if abs(diag_sum) == 2:
+            reward += 0.1 * np.sign(diag_sum) * turn
+            
+        anti_diag_sum = np.trace(np.flip(state, axis=1))
+        if abs(anti_diag_sum) == 2:
+            reward += 0.1 * np.sign(anti_diag_sum) * turn
+            
+        return reward
 
     def select_action(self, state, turn):
         """epsilon-greedy选动作：大部分时间选Q值最大，少部分探索"""
@@ -79,6 +134,11 @@ class Model(object):
         for i in tqdm(range(self.count)):
             state = np.zeros((3, 3), dtype=np.int8)
             turn = BLACK
+            
+            # 更新探索率
+            self.epsilon = max(self.epsilon_min, 
+                             self.initial_epsilon * (self.epsilon_decay ** i))
+            
             # 每100步更新一次训练窗口信息
             if callback and i % 100 == 0:
                 callback(i, self.Q, self.epsilon)
@@ -88,6 +148,7 @@ class Model(object):
             if state_key not in self.Q:
                 self.Q[state_key] = np.zeros(9, dtype=np.float32)
             action = self.select_action(state, turn)
+            
             while True:
                 # 落子
                 state_ = state.copy()
@@ -108,22 +169,28 @@ class Model(object):
                         reward - self.Q[state_key][action_idx])
                     break
 
+                # 获取中间奖励
+                intermediate_reward = self.get_reward_shaping(state_, turn)
+                
                 # 下一步状态和动作
                 next_key = self.hash(state_)
                 if next_key not in self.Q:
                     self.Q[next_key] = np.zeros(9, dtype=np.float32)
                 next_action = self.select_action(state_, -turn)
                 next_action_idx = next_action[0]*3 + next_action[1]
+                
                 # SARSA核心：用"实际选择的下一个动作"的Q值来更新
                 q = self.Q[state_key][action_idx]
                 next_q = self.Q[next_key][next_action_idx]
                 self.Q[state_key][action_idx] += self.alpha * (
-                    0.0 + self.gamma * next_q - q)
+                    intermediate_reward + self.gamma * next_q - q)
+                
                 # 状态转移
                 state = state_
                 state_key = next_key
                 action = next_action
                 turn *= -1
+                
         self.save()
         # 训练结束时的最后一次回调
         if callback:

@@ -11,7 +11,7 @@ class Game(object):
         self.ai = ai  # 设置 AI 使用的棋子颜色
         
         # 初始化并加载模型
-        self.switch_model(self.model_type)
+        # self.switch_model(self.model_type)
         
     def switch_model(self, model_type):
         """切换AI模型"""

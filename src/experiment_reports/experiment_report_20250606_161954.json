@@ -1,0 +1,24 @@
+{
+    "win_rates": {
+        "Q-Learning": {
+            "wins": 100,
+            "draws": 0,
+            "losses": 0,
+            "win_rate": 1.0,
+            "draw_rate": 0.0,
+            "loss_rate": 0.0
+        },
+        "SARSA": {
+            "wins": 0,
+            "draws": 0,
+            "losses": 100,
+            "win_rate": 0.0,
+            "draw_rate": 0.0,
+            "loss_rate": 1.0
+        }
+    },
+    "convergence": {
+        "Q-Learning": {
+            "q_table_size": 889,
+            "q_values": {
+                "mean": 

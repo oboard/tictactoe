@@ -127,6 +127,7 @@ class ContextMenu(QtWidgets.QMenu):
     model_qlearning_signal = QtCore.Signal(None)
     model_mcts_signal = QtCore.Signal(None)
     model_default_signal = QtCore.Signal(None)
+    experiment_signal = QtCore.Signal(None)
 
     MENUS = [
         ('Restart', 'Ctrl+N', lambda self: self.reset_signal.emit()),
@@ -141,6 +142,8 @@ class ContextMenu(QtWidgets.QMenu):
         ('Q-Learning', 'Ctrl+2', lambda self: self.model_qlearning_signal.emit()),
         ('MCTS', 'Ctrl+3', lambda self: self.model_mcts_signal.emit()),
         ('Default', 'Ctrl+4', lambda self: self.model_default_signal.emit()),
+        ('separator', None, None),
+        ('Experiment', 'Ctrl+E', lambda self: self.experiment_signal.emit()),
     ]
 
     def __init__(self, parent=None):
@@ -370,6 +373,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.contextMenu.undo_signal.connect(self.undo)
         self.contextMenu.train_signal.connect(self.train)
         self.contextMenu.save_signal.connect(self.save)
+        self.contextMenu.experiment_signal.connect(self.show_experiment)
         
         # 添加模型切换信号连接
         self.contextMenu.model_default_signal.connect(lambda: self.switch_model('default'))
@@ -382,7 +386,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.restart()
         self.training_window = TrainingWindow(self)
+        self.experiment_window = None  # 初始化实验窗口
+        self.algorithm_compare_window = None  # 新增算法对比窗口引用
         
+        # 添加算法对比菜单项
+        menubar = self.menuBar()
+        compare_menu = menubar.addMenu("算法对比")
+        compare_action = QtGui.QAction("打开算法对比研究窗口", self)
+        compare_action.triggered.connect(self.show_algorithm_compare)
+        compare_menu.addAction(compare_action)
+
     def switch_model(self, model_type):
         """切换AI模型"""
         if model_type == self.current_model:
@@ -502,6 +515,19 @@ class MainWindow(QtWidgets.QMainWindow):
         }
         self.game.model.filename = model_files[self.current_model]  # 设置保存文件名
         self.save()
+
+    def show_experiment(self):
+        """显示实验窗口"""
+        if self.experiment_window is None:
+            from experiment_window import ExperimentWindow
+            self.experiment_window = ExperimentWindow(self)
+        self.experiment_window.show()
+
+    def show_algorithm_compare(self):
+        if self.algorithm_compare_window is None:
+            from algorithm_compare_window import AlgorithmCompareWindow
+            self.algorithm_compare_window = AlgorithmCompareWindow()
+        self.algorithm_compare_window.show()
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         self.board.resizeEvent(event)
