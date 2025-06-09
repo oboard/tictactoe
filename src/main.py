@@ -168,7 +168,7 @@ class TrainingWindow(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("训练状态")
-        self.resize(800, 400)  # 调整窗口大小以容纳棋盘
+        self.resize(800, 500)  # 调整窗口大小以容纳更多信息
         
         # 使用垂直布局作为主布局
         main_layout = QtWidgets.QVBoxLayout()
@@ -229,28 +229,59 @@ class TrainingWindow(QtWidgets.QDialog):
         left_widget = QtWidgets.QWidget()
         left_layout = QtWidgets.QVBoxLayout()
         left_widget.setLayout(left_layout)
-        content_layout.addWidget(left_widget)
+        content_layout.addWidget(left_widget, 2)  # 2:1的比例
+        
+        # 左侧上部为Q表信息
+        top_left_layout = QtWidgets.QVBoxLayout()
+        left_layout.addLayout(top_left_layout)
         
         # Q表信息
         self.q_info = QtWidgets.QTextEdit()
         self.q_info.setReadOnly(True)
-        left_layout.addWidget(QtWidgets.QLabel("Q表状态:"))
-        left_layout.addWidget(self.q_info)
+        top_left_layout.addWidget(QtWidgets.QLabel("Q表状态:"))
+        top_left_layout.addWidget(self.q_info)
         
         # 探索策略信息
         self.strategy_info = QtWidgets.QLabel()
-        left_layout.addWidget(QtWidgets.QLabel("探索策略:"))
-        left_layout.addWidget(self.strategy_info)
+        top_left_layout.addWidget(QtWidgets.QLabel("探索策略:"))
+        top_left_layout.addWidget(self.strategy_info)
+        
+        # 左侧下部为胜率和棋型统计
+        stats_layout = QtWidgets.QVBoxLayout()
+        left_layout.addLayout(stats_layout)
+        
+        # 胜率统计
+        stats_label = QtWidgets.QLabel("训练对局统计:")
+        stats_layout.addWidget(stats_label)
+        
+        self.stats_info = QtWidgets.QTextEdit()
+        self.stats_info.setReadOnly(True)
+        self.stats_info.setMaximumHeight(100)
+        stats_layout.addWidget(self.stats_info)
+        
+        # 棋型统计
+        patterns_label = QtWidgets.QLabel("棋型识别统计:")
+        stats_layout.addWidget(patterns_label)
+        
+        self.patterns_info = QtWidgets.QTextEdit()
+        self.patterns_info.setReadOnly(True)
+        self.patterns_info.setMaximumHeight(120)
+        stats_layout.addWidget(self.patterns_info)
         
         # 训练进度
         self.progress = QtWidgets.QProgressBar()
         left_layout.addWidget(self.progress)
         
         # 右侧棋盘
+        right_widget = QtWidgets.QWidget()
+        right_layout = QtWidgets.QVBoxLayout()
+        right_widget.setLayout(right_layout)
+        content_layout.addWidget(right_widget, 1)  # 2:1的比例
+        
         self.board = Board(self)
         self.board.piece_size = 30  # 调整棋子大小
         self.board.setFixedSize(400, 400)  # 调整棋盘大小为 80*3=240
-        content_layout.addWidget(self.board)
+        right_layout.addWidget(self.board)
         
         # 连接按钮信号
         self.model_buttons = {
@@ -281,6 +312,9 @@ class TrainingWindow(QtWidgets.QDialog):
     def start_training(self):
         # 设置新的训练轮数
         epochs = self.epoch_spinbox.value()
+        # 确保模型已初始化
+        if self.parent().game.model is None:
+            self.parent().game.switch_model(self.parent().current_model)
         self.parent().game.model.count = epochs
         # 开始训练
         self.parent().train()
@@ -339,6 +373,45 @@ class TrainingWindow(QtWidgets.QDialog):
         # 更新探索策略信息
         strategy_text = f"当前探索率(ε): {epsilon:.2f}"
         self.strategy_info.setText(strategy_text)
+        
+        # 更新胜率统计信息（针对Q-learning模型）
+        model = self.parent().game.model
+        if hasattr(model, 'stats'):
+            total_games = model.stats["black_wins"] + model.stats["white_wins"] + model.stats["draws"]
+            if total_games > 0:
+                black_win_rate = model.stats["black_wins"] / total_games * 100
+                white_win_rate = model.stats["white_wins"] / total_games * 100
+                draw_rate = model.stats["draws"] / total_games * 100
+                
+                stats_text = (f"总对局数: {total_games}\n"
+                            f"黑方胜率: {black_win_rate:.2f}% ({model.stats['black_wins']}局)\n"
+                            f"白方胜率: {white_win_rate:.2f}% ({model.stats['white_wins']}局)\n"
+                            f"平局比例: {draw_rate:.2f}% ({model.stats['draws']}局)")
+                self.stats_info.setText(stats_text)
+            else:
+                self.stats_info.setText("尚无对局统计数据")
+        else:
+            self.stats_info.setText("当前模型不支持对局统计")
+            
+        # 更新棋型统计信息（针对Q-learning模型）
+        if hasattr(model, 'pattern_stats'):
+            pattern_names = {
+                1: "叉子棋型",
+                2: "阻挡叉子",
+                3: "中心占据",
+                4: "角落占据",
+                5: "对角角落",
+                6: "边缘占据"
+            }
+            
+            patterns_text = ""
+            for pattern_id, pattern_name in pattern_names.items():
+                count = model.pattern_stats.get(pattern_id, 0)
+                patterns_text += f"{pattern_name}: {count}次\n"
+                
+            self.patterns_info.setText(patterns_text)
+        else:
+            self.patterns_info.setText("当前模型不支持棋型统计")
         
         # 更新进度
         self.progress.setMaximum(total)
@@ -492,6 +565,9 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
     def train(self):
+        # 确保模型已初始化
+        if self.game.model is None:
+            self.game.switch_model(self.current_model)
         self.training_window.show()
         self.progressBar.setVisible(True)
         self.progressBar.setRange(0, self.game.model.count)  # 使用更新后的训练轮数
