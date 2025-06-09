@@ -326,6 +326,7 @@ class TrainingWindow(QtWidgets.QDialog):
         q_info_text = f"Q表大小: {len(q_table)}个状态\n"
         
         # 显示部分Q值示例
+        sample_state = None  # 初始化sample_state为None
         if q_table:
             # 找到一个有趣的状态（已经有一些棋子的状态）
             non_empty_states = []

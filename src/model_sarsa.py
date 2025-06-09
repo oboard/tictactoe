@@ -39,13 +39,20 @@ class Model(object):
             OPPOSITE_CORNER: 0,
             EDGE_PATTERN: 0
         }
+        # 新增：开局策略统计
+        self.opening_stats = {
+            'center': {'wins': 0, 'total': 0},
+            'corner': {'wins': 0, 'total': 0},
+            'edge': {'wins': 0, 'total': 0}
+        }
         logger.info("load SARSA state count %s", len(self.Q))
 
     def save(self):
         data = {
             'Q': self.Q,
             'stats': self.stats,
-            'pattern_stats': self.pattern_stats
+            'pattern_stats': self.pattern_stats,
+            'opening_stats': self.opening_stats  # 新增：保存开局统计
         }
         with open(self.filename, 'wb') as file:
             pickle.dump(data, file)
@@ -60,11 +67,21 @@ class Model(object):
                 self.Q = data['Q']
                 self.stats = data.get('stats', {"black_wins": 0, "white_wins": 0, "draws": 0})
                 self.pattern_stats = data.get('pattern_stats', {pattern: 0 for pattern in range(1, 7)})
+                self.opening_stats = data.get('opening_stats', {
+                    'center': {'wins': 0, 'total': 0},
+                    'corner': {'wins': 0, 'total': 0},
+                    'edge': {'wins': 0, 'total': 0}
+                })
                 return self.Q
             else:
                 # 兼容旧版本
                 self.stats = {"black_wins": 0, "white_wins": 0, "draws": 0}
                 self.pattern_stats = {pattern: 0 for pattern in range(1, 7)}
+                self.opening_stats = {
+                    'center': {'wins': 0, 'total': 0},
+                    'corner': {'wins': 0, 'total': 0},
+                    'edge': {'wins': 0, 'total': 0}
+                }
                 return data
 
     def end_game(self, state: np.ndarray):
@@ -114,90 +131,63 @@ class Model(object):
         return [tuple(x) for x in np.argwhere(state == EMPTY)]
 
     def get_reward_shaping(self, state: np.ndarray, turn: int) -> float:
-        """增强版奖励塑形：根据当前状态给予中间奖励"""
         reward = 0.0
         
         # 一、关键形态识别
-        # 1. 检查行、列和对角线上连续两子的情况
-        for i in range(3):
+        # 1. 检查行、列和对角线上连续两子的情况，并判断是否为防守动作
+        last_move = np.argwhere(state == turn)[-1] if len(np.argwhere(state == turn)) > 0 else None
+        if last_move is not None:
+            last_row, last_col = last_move
+
+            # 检查是否为防守动作
+            is_defensive_move = False
+            
             # 检查行
-            row = state[i, :]
-            row_sum = np.sum(row)
-            if abs(row_sum) == 2 and 0 in row:  # 两子一空，可能下一步获胜
-                reward += 0.2 * np.sign(row_sum) * turn
-            elif abs(row_sum) == 1 and 0 in row and list(row).count(0) == 2:  # 一子两空，占据中间位置
-                reward += 0.05 * np.sign(row_sum) * turn
-                
+            for i in range(3):
+                row = state[i, :]
+                row_sum = np.sum(row)
+                if abs(row_sum) == 2 and 0 in row:  # 两子一空的情况
+                    empty_pos = np.where(row == 0)[0][0]
+                    if np.sign(row_sum) == -turn and i == last_row and empty_pos == last_col:  # 是防守动作
+                        reward += 5.0 * turn
+                        is_defensive_move = True
+                        break
+                        
             # 检查列
-            col = state[:, i]
-            col_sum = np.sum(col)
-            if abs(col_sum) == 2 and 0 in col:
-                reward += 0.2 * np.sign(col_sum) * turn
-            elif abs(col_sum) == 1 and 0 in col and list(col).count(0) == 2:
-                reward += 0.05 * np.sign(col_sum) * turn
-                
-        # 检查对角线
-        diag = np.diag(state)
-        diag_sum = np.sum(diag)
-        if abs(diag_sum) == 2 and 0 in diag:
-            reward += 0.2 * np.sign(diag_sum) * turn
-        elif abs(diag_sum) == 1 and 0 in diag and list(diag).count(0) == 2:
-            reward += 0.05 * np.sign(diag_sum) * turn
+            if not is_defensive_move:
+                for i in range(3):
+                    col = state[:, i]
+                    col_sum = np.sum(col)
+                    if abs(col_sum) == 2 and 0 in col:
+                        empty_pos = np.where(col == 0)[0][0]
+                        if np.sign(col_sum) == -turn and empty_pos == last_row and i == last_col:  # 是防守动作
+                            reward += 5.0 * turn
+                            is_defensive_move = True
+                            break
+                            
+            # 检查主对角线
+            if not is_defensive_move:
+                diag = np.diag(state)
+                diag_sum = np.sum(diag)
+                if abs(diag_sum) == 2 and 0 in diag:
+                    empty_pos = np.where(diag == 0)[0][0]
+                    if np.sign(diag_sum) == -turn and last_row == empty_pos and last_col == empty_pos:  # 是防守动作
+                        reward += 5.0 * turn
+                        is_defensive_move = True
+                        
+            # 检查副对角线
+            if not is_defensive_move:
+                anti_diag = np.diag(np.flip(state, axis=1))
+                anti_diag_sum = np.sum(anti_diag)
+                if abs(anti_diag_sum) == 2 and 0 in anti_diag:
+                    empty_pos = np.where(anti_diag == 0)[0][0]
+                    if np.sign(anti_diag_sum) == -turn and last_row == empty_pos and last_col == 2 - empty_pos:  # 是防守动作
+                        reward += 5.0 * turn
+                        is_defensive_move = True
             
-        anti_diag = np.diag(np.flip(state, axis=1))
-        anti_diag_sum = np.sum(anti_diag)
-        if abs(anti_diag_sum) == 2 and 0 in anti_diag:
-            reward += 0.2 * np.sign(anti_diag_sum) * turn
-        elif abs(anti_diag_sum) == 1 and 0 in anti_diag and list(anti_diag).count(0) == 2:
-            reward += 0.05 * np.sign(anti_diag_sum) * turn
-            
-        # 2. 优先占据中心
-        if state[1, 1] == turn:
-            reward += 0.1
-            self.pattern_stats[CENTER_PATTERN] += 1
-        elif state[1, 1] == -turn:
-            reward -= 0.1
-            
-        # 3. 优先占据角落比边缘
-        corners = [(0, 0), (0, 2), (2, 0), (2, 2)]
-        corner_values = [state[x, y] for x, y in corners]
-        corners_own = corner_values.count(turn)
-        corners_opp = corner_values.count(-turn)
-        reward += 0.05 * corners_own - 0.05 * corners_opp
-        
-        if corners_own > 0:
-            self.pattern_stats[CORNER_PATTERN] += 1
-            
-        # 三、井字棋特殊棋型识别与奖励
-        # 1. 叉子棋型（同时有两路获胜的威胁）
-        fork_threat = self.detect_fork_threat(state, turn)
-        if fork_threat:
-            reward += 0.3 * turn  # 高奖励，这是极强的棋型
-            self.pattern_stats[FORK_PATTERN] += 1
-            
-        # 2. 对手的叉子棋型检测与阻挡
-        opponent_fork = self.detect_fork_threat(state, -turn)
-        if opponent_fork:
-            reward -= 0.25 * turn  # 对手有叉子威胁是个坏局面
-            # 这里的奖励略低于自己的叉子，确保进攻优先于防守
-            self.pattern_stats[BLOCK_FORK_PATTERN] += 1
-            
-        # 3. 对角角落策略（如果对手占据一个角落，则占据对角角落）
-        if self.is_opposite_corner_play(state, turn):
-            reward += 0.1 * turn
-            self.pattern_stats[OPPOSITE_CORNER] += 1
-            
-        # 4. 边缘占据策略（如果中心和角落不可用）
-        if self.is_edge_play(state, turn):
-            reward += 0.05 * turn
-            self.pattern_stats[EDGE_PATTERN] += 1
-            
-        # 5. 开局策略奖励
-        if np.count_nonzero(state) <= 3:  # 游戏开始阶段
-            reward += self.opening_strategy_reward(state, turn)
-            
+        # 其他奖励计算...
         return reward
-        
+
     def detect_fork_threat(self, state: np.ndarray, player: int):
         """检测叉子棋型（同时有两路获胜的威胁）"""
         # 复制当前状态用于测试
@@ -346,8 +336,22 @@ class Model(object):
             if state_key not in self.Q:
                 self.Q[state_key] = np.zeros(9, dtype=np.float32)
             action = self.select_action(state, turn)
+            first_move = action  # 记录第一步落子
+            
+            # 记录上一个状态是否有对方连子威胁
+            prev_state_threatened = False
             
             while True:
+                # 检查当前状态是否有对方连子威胁
+                current_threatened = False
+                test_state = state.copy()
+                for test_move in self.available_moves(test_state):
+                    test_state[test_move] = -turn
+                    if self.end_game(test_state) is not None:
+                        current_threatened = True
+                        break
+                    test_state[test_move] = 0
+                
                 # 落子
                 state_ = state.copy()
                 state_[action] = turn
@@ -360,17 +364,24 @@ class Model(object):
                         reward = 1.0 * turn
                         if turn == BLACK:
                             self.stats["black_wins"] += 1
+                            self.update_opening_stats(first_move, True)
                         else:
                             self.stats["white_wins"] += 1
                     elif winner == 2:  # 白胜
-                        reward = -1.0 * turn
+                        # 如果之前有威胁没防守导致输掉，额外惩罚
+                        if prev_state_threatened:
+                            reward = -5.0 * turn
+                        else:
+                            reward = -1.0 * turn
                         if turn == WHITE:
                             self.stats["white_wins"] += 1
                         else:
                             self.stats["black_wins"] += 1
+                            self.update_opening_stats(first_move, False)
                     else:  # 平局
                         reward = 0.0
                         self.stats["draws"] += 1
+                        self.update_opening_stats(first_move, 0.5)
                         
                     # 终局直接更新
                     self.Q[state_key][action_idx] += self.alpha * (
@@ -379,6 +390,9 @@ class Model(object):
 
                 # 获取中间奖励
                 intermediate_reward = self.get_reward_shaping(state_, turn)
+                
+                # 更新威胁状态
+                prev_state_threatened = current_threatened
                 
                 # 下一步状态和动作
                 next_key = self.hash(state_)
@@ -399,18 +413,25 @@ class Model(object):
                 action = next_action
                 turn *= -1
                 
-            # 每1000局保存一次模型
+            # 每1000局保存一次模型，并更新开局策略
             if i > 0 and i % 1000 == 0:
+                self.adjust_opening_q_values()  # 根据统计调整开局Q值
                 self.save()
                 
             # 定期显示训练统计
             if i > 0 and i % 5000 == 0:
                 total = self.stats["black_wins"] + self.stats["white_wins"] + self.stats["draws"]
                 if total > 0:
+                    # 显示开局策略统计
                     logger.info(f"SARSA训练进度 {i}/{self.count} - 状态数: {len(self.Q)} - "
                              f"黑胜率: {self.stats['black_wins']/total:.2f} - "
                              f"白胜率: {self.stats['white_wins']/total:.2f} - "
                              f"平局率: {self.stats['draws']/total:.2f}")
+                    logger.info("开局策略统计:")
+                    for move_type in ['center', 'corner', 'edge']:
+                        stats = self.opening_stats[move_type]
+                        win_rate = stats['wins'] / stats['total'] if stats['total'] > 0 else 0
+                        logger.info(f"{move_type}: 胜率 {win_rate:.2f} (总计: {stats['total']})")
                 
         self.save()
         # 训练结束时的最后一次回调
@@ -424,3 +445,38 @@ class Model(object):
                       f"黑胜率: {self.stats['black_wins']/total:.2f} - "
                       f"白胜率: {self.stats['white_wins']/total:.2f} - "
                       f"平局率: {self.stats['draws']/total:.2f}")
+
+    def get_move_type(self, move):
+        """判断落子类型（中心、角落、边缘）"""
+        if move == (1, 1):
+            return 'center'
+        if move in [(0, 0), (0, 2), (2, 0), (2, 2)]:
+            return 'corner'
+        return 'edge'
+
+    def update_opening_stats(self, first_move, is_win):
+        """更新开局策略统计"""
+        move_type = self.get_move_type(first_move)
+        self.opening_stats[move_type]['total'] += 1
+        if is_win:
+            self.opening_stats[move_type]['wins'] += 1
+
+    def adjust_opening_q_values(self):
+        """根据开局统计调整Q值"""
+        empty_state = np.zeros((3, 3), dtype=np.int8)
+        state_key = self.hash(empty_state)
+        if state_key not in self.Q:
+            self.Q[state_key] = np.zeros(9, dtype=np.float32)
+
+        # 计算各类型的胜率
+        win_rates = {}
+        for move_type in ['center', 'corner', 'edge']:
+            stats = self.opening_stats[move_type]
+            win_rate = stats['wins'] / stats['total'] if stats['total'] > 0 else 0.33
+            win_rates[move_type] = win_rate
+
+        # 根据胜率调整Q值
+        for i in range(3):
+            for j in range(3):
+                move_type = self.get_move_type((i, j))
+                self.Q[state_key][i*3 + j] = win_rates[move_type]
