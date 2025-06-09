@@ -310,14 +310,16 @@ class TrainingWindow(QtWidgets.QDialog):
         train_btn.clicked.connect(self.start_training)
         
     def start_training(self):
+        """设置训练参数并开始训练"""
         # 设置新的训练轮数
         epochs = self.epoch_spinbox.value()
         # 确保模型已初始化
-        if self.parent().game.model is None:
-            self.parent().game.switch_model(self.parent().current_model)
-        self.parent().game.model.count = epochs
+        parent = self.parent()
+        if parent.game.model is None:
+            parent.game.switch_model(parent.current_model)
+        parent.game.model.count = epochs
         # 开始训练
-        self.parent().train()
+        parent.start_training()
 
     def update_info(self, q_table, epsilon, step, total):
         # 更新Q表信息
@@ -565,10 +567,14 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
     def train(self):
+        """显示训练窗口但不立即开始训练"""
         # 确保模型已初始化
         if self.game.model is None:
             self.game.switch_model(self.current_model)
         self.training_window.show()
+        
+    def start_training(self):
+        """实际开始训练过程"""
         self.progressBar.setVisible(True)
         self.progressBar.setRange(0, self.game.model.count)  # 使用更新后的训练轮数
 
@@ -589,7 +595,7 @@ class MainWindow(QtWidgets.QMainWindow):
             'mcts': 'model_mcts.pkl',
             'default': 'model_default.pkl'
         }
-        self.game.model.filename = model_files[self.current_model]  # 设置保存文件名
+        self.game.model.filename = os.path.join(dirname, model_files[self.current_model])  # 设置保存文件名
         self.save()
 
     def show_experiment(self):
