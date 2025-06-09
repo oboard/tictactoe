@@ -247,6 +247,17 @@ class Model(object):
         return
 
     def train(self, callback=None):
+        # 重置棋型统计
+        self.pattern_stats = {
+            FORK_PATTERN: 0,
+            BLOCK_FORK_PATTERN: 0,
+            CENTER_PATTERN: 0,
+            CORNER_PATTERN: 0,
+            OPPOSITE_CORNER: 0,
+            EDGE_PATTERN: 0
+        }
+        # 重置胜率统计
+        self.stats = {"black_wins": 0, "white_wins": 0, "draws": 0}
         state = np.zeros((3, 3), dtype=np.int8)
         turn = BLACK
         bar = tqdm(range(self.count))
